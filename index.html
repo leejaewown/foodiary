@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>먹었다 — AI 식단 기록</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #F7F6F3;
+      --surface: #FFFFFF;
+      --surface2: #F0EEE9;
+      --accent: #3D7A5E;
+      --accent-light: #E8F3EE;
+      --accent2: #F4A35A;
+      --text: #1A1A1A;
+      --text2: #6B6B6B;
+      --text3: #A0A0A0;
+      --border: #E5E3DE;
+      --danger: #E05252;
+      --morning: #FFF3E0;
+      --lunch: #E8F5E9;
+      --dinner: #E8EAF6;
+      --snack: #FCE4EC;
+      --morning-accent: #F4A35A;
+      --lunch-accent: #3D7A5E;
+      --dinner-accent: #5C6BC0;
+      --snack-accent: #E06090;
+      --radius: 16px;
+      --radius-sm: 10px;
+      --shadow: 0 2px 12px rgba(0,0,0,0.07);
+      --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+    }
+
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      max-width: 430px;
+      margin: 0 auto;
+    }
+
+    /* ── 공통 ── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 6px; padding: 12px 20px; border-radius: var(--radius-sm);
+      font-family: inherit; font-size: 15px; font-weight: 700;
+      cursor: pointer; border: none; transition: all .15s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:active { background: #2e5f48; transform: scale(.97); }
+    .btn-ghost { background: transparent; color: var(--text2); border: 1.5px solid var(--border); }
+    .btn-ghost:active { background: var(--surface2); }
+    .btn-danger { background: #FEE8E8; color: var(--danger); }
+    .btn-full { width: 100%; }
+
+    /* ── 헤더 ── */
+    #app-header {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 20px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    #app-header .logo { font-size: 20px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+    #app-header .header-right { display: flex; gap: 8px; align-items: center; }
+    #date-nav { display: flex; align-items: center; gap: 10px; }
+    #date-nav button { background: none; border: none; cursor: pointer; color: var(--text2); font-size: 18px; padding: 4px 8px; border-radius: 6px; }
+    #date-nav button:hover { background: var(--surface2); }
+    #current-date-label { font-size: 14px; font-weight: 500; color: var(--text); white-space: nowrap; }
+
+    /* ── 탭 ── */
+    #tab-bar {
+      background: var(--surface);
+      display: flex;
+      border-bottom: 1px solid var(--border);
+    }
+    .tab-btn {
+      flex: 1; padding: 12px 0; font-family: inherit; font-size: 13px; font-weight: 500;
+      background: none; border: none; cursor: pointer; color: var(--text3);
+      border-bottom: 2.5px solid transparent; transition: all .15s;
+    }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
+
+    /* ── 메인 콘텐츠 ── */
+    #main { padding: 20px 16px 100px; }
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ── 칼로리 서머리 ── */
+    #kcal-summary {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+    #kcal-summary .summary-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+    #kcal-summary .kcal-main { font-size: 36px; font-weight: 700; color: var(--accent); line-height: 1; }
+    #kcal-summary .kcal-main span { font-size: 14px; font-weight: 400; color: var(--text2); margin-left: 4px; }
+    #kcal-summary .kcal-goal { font-size: 13px; color: var(--text3); text-align: right; }
+    .progress-bar { height: 8px; background: var(--surface2); border-radius: 99px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width .4s ease; }
+    .progress-fill.over { background: var(--danger); }
+    .macros { display: flex; gap: 12px; margin-top: 14px; }
+    .macro { flex: 1; text-align: center; background: var(--surface2); border-radius: 10px; padding: 10px 6px; }
+    .macro .macro-val { font-size: 16px; font-weight: 700; }
+    .macro .macro-label { font-size: 11px; color: var(--text3); margin-top: 2px; }
+    .macro.carb .macro-val { color: #5C6BC0; }
+    .macro.prot .macro-val { color: var(--accent); }
+    .macro.fat .macro-val { color: var(--accent2); }
+
+    /* ── 식사 카드 ── */
+    .meal-section { margin-bottom: 14px; }
+    .meal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+      font-weight: 700; font-size: 14px;
+    }
+    .meal-header .meal-kcal { font-size: 13px; font-weight: 500; opacity: .8; }
+    .meal-body { background: var(--surface); border-radius: 0 0 var(--radius-sm) var(--radius-sm); box-shadow: var(--shadow); }
+    .meal-item { display: flex; align-items: center; padding: 12px 14px; gap: 12px; border-bottom: 1px solid var(--border); }
+    .meal-item:last-child { border-bottom: none; }
+    .meal-item-thumb {
+      width: 44px; height: 44px; border-radius: 8px; object-fit: cover;
+      background: var(--surface2); flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; font-size: 20px;
+    }
+    .meal-item-thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+    .meal-item-info { flex: 1; }
+    .meal-item-name { font-size: 14px; font-weight: 500; }
+    .meal-item-kcal { font-size: 12px; color: var(--text3); margin-top: 2px; }
+    .meal-item-del { background: none; border: none; cursor: pointer; color: var(--text3); font-size: 18px; padding: 4px; }
+    .meal-empty { padding: 18px 14px; color: var(--text3); font-size: 13px; text-align: center; }
+
+    .meal-morning .meal-header { background: var(--morning); color: var(--morning-accent); }
+    .meal-lunch .meal-header { background: var(--lunch); color: var(--lunch-accent); }
+    .meal-dinner .meal-header { background: var(--dinner); color: var(--dinner-accent); }
+    .meal-snack .meal-header { background: var(--snack); color: var(--snack-accent); }
+
+    /* ── 기록 버튼 ── */
+    #fab {
+      position: fixed; bottom: 24px; right: calc(50% - 215px + 16px);
+      width: 56px; height: 56px; border-radius: 50%;
+      background: var(--accent); color: #fff;
+      font-size: 28px; border: none; cursor: pointer;
+      box-shadow: var(--shadow-lg); z-index: 200;
+      display: flex; align-items: center; justify-content: center;
+      transition: transform .15s;
+    }
+    #fab:active { transform: scale(.92); }
+
+    /* ── 주간 차트 ── */
+    #weekly-section {
+      background: var(--surface); border-radius: var(--radius);
+      padding: 18px; margin-bottom: 16px; box-shadow: var(--shadow);
+    }
+    #weekly-section h3 { font-size: 14px; font-weight: 700; margin-bottom: 14px; color: var(--text2); }
+
+    /* ── 기록 페이지 ── */
+    #record-page { }
+    .section-title { font-size: 13px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; margin-top: 20px; }
+    .upload-area {
+      border: 2px dashed var(--border); border-radius: var(--radius);
+      padding: 32px 20px; text-align: center; cursor: pointer;
+      transition: border-color .15s; background: var(--surface);
+    }
+    .upload-area:hover { border-color: var(--accent); }
+    .upload-area .upload-icon { font-size: 36px; margin-bottom: 8px; }
+    .upload-area p { font-size: 14px; color: var(--text2); }
+    .upload-area small { font-size: 12px; color: var(--text3); }
+    #preview-wrap { position: relative; display: none; margin-top: 12px; }
+    #preview-img { width: 100%; border-radius: var(--radius); max-height: 240px; object-fit: cover; }
+    #remove-img { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,.5); color: #fff; border: none; border-radius: 50%; width: 28px; height: 28px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+
+    /* AI 분석 결과 */
+    #ai-result-section { display: none; }
+    #ai-loading { display: none; text-align: center; padding: 24px; color: var(--text2); font-size: 14px; }
+    .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; margin-bottom: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .food-tag-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .food-tag {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--accent-light); color: var(--accent);
+      border-radius: 99px; padding: 6px 12px; font-size: 13px; font-weight: 500;
+    }
+    .food-tag button { background: none; border: none; cursor: pointer; color: var(--accent); font-size: 15px; line-height: 1; }
+    .add-food-row { display: flex; gap: 8px; }
+    .add-food-row input {
+      flex: 1; padding: 10px 14px; border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm); font-family: inherit; font-size: 14px;
+      outline: none; background: var(--surface);
+    }
+    .add-food-row input:focus { border-color: var(--accent); }
+
+    /* 식사 시간대 */
+    .meal-type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .meal-type-btn {
+      padding: 10px 4px; border-radius: var(--radius-sm); border: 2px solid var(--border);
+      background: var(--surface); font-family: inherit; font-size: 13px; font-weight: 500;
+      cursor: pointer; text-align: center; transition: all .15s;
+    }
+    .meal-type-btn.selected { border-color: var(--accent); background: var(--accent-light); color: var(--accent); font-weight: 700; }
+    .meal-type-btn .meal-emoji { display: block; font-size: 20px; margin-bottom: 4px; }
+
+    /* 메모 */
+    #memo-input {
+      width: 100%; padding: 12px 14px; border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm); font-family: inherit; font-size: 14px;
+      resize: none; outline: none; background: var(--surface);
+    }
+    #memo-input:focus { border-color: var(--accent); }
+
+    /* 설정 페이지 */
+    .setting-card { background: var(--surface); border-radius: var(--radius); padding: 18px; margin-bottom: 14px; box-shadow: var(--shadow); }
+    .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .setting-row:last-child { border-bottom: none; }
+    .setting-label { font-size: 14px; font-weight: 500; }
+    .setting-sub { font-size: 12px; color: var(--text3); margin-top: 2px; }
+    .setting-row input[type=text], .setting-row input[type=number] {
+      width: 140px; padding: 8px 12px; border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm); font-family: inherit; font-size: 14px;
+      text-align: right; outline: none;
+    }
+    .setting-row input:focus { border-color: var(--accent); }
+
+    /* 토스트 */
+    #toast {
+      position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: #1A1A1A; color: #fff; padding: 10px 20px; border-radius: 99px;
+      font-size: 13px; font-weight: 500; opacity: 0; pointer-events: none;
+      transition: all .25s; z-index: 999; white-space: nowrap;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* API 키 배너 */
+    #api-banner {
+      background: #FFF8E1; border: 1px solid #FFD54F; border-radius: var(--radius-sm);
+      padding: 12px 14px; margin-bottom: 16px; font-size: 13px; color: #7B5800;
+    }
+    #api-banner a { color: var(--accent); font-weight: 700; }
+    #api-key-row { display: flex; gap: 8px; margin-top: 8px; }
+    #api-key-input {
+      flex: 1; padding: 8px 12px; border: 1.5px solid #FFD54F; border-radius: 8px;
+      font-family: inherit; font-size: 13px; outline: none;
+    }
+    #api-key-input:focus { border-color: var(--accent); }
+    #save-api-key { padding: 8px 14px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+
+<header id="app-header">
+  <div class="logo">먹었다 🥗</div>
+  <div id="date-nav">
+    <button id="prev-day">‹</button>
+    <span id="current-date-label"></span>
+    <button id="next-day">›</button>
+  </div>
+</header>
+
+<div id="tab-bar">
+  <button class="tab-btn active" data-tab="home">홈</button>
+  <button class="tab-btn" data-tab="record">기록하기</button>
+  <button class="tab-btn" data-tab="stats">통계</button>
+  <button class="tab-btn" data-tab="settings">설정</button>
+</div>
+
+<main id="main">
+
+  <!-- ── 홈 ── -->
+  <div id="home-page" class="page active">
+    <div id="kcal-summary">
+      <div class="summary-top">
+        <div>
+          <div class="kcal-main"><span id="total-kcal">0</span><span>kcal</span></div>
+          <div style="font-size:12px;color:var(--text3);margin-top:4px;">오늘 섭취</div>
+        </div>
+        <div class="kcal-goal">
+          <div style="font-size:22px;font-weight:700;color:var(--text2);" id="remain-kcal">—</div>
+          <div style="font-size:11px;color:var(--text3);">남은 칼로리</div>
+        </div>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="kcal-bar" style="width:0%"></div></div>
+      <div class="macros">
+        <div class="macro carb"><div class="macro-val" id="total-carb">0g</div><div class="macro-label">탄수화물</div></div>
+        <div class="macro prot"><div class="macro-val" id="total-prot">0g</div><div class="macro-label">단백질</div></div>
+        <div class="macro fat"><div class="macro-val" id="total-fat">0g</div><div class="macro-label">지방</div></div>
+      </div>
+    </div>
+
+    <div id="meal-list"></div>
+  </div>
+
+  <!-- ── 기록하기 ── -->
+  <div id="record-page" class="page">
+    <div id="api-banner">
+      🔑 AI 자동 인식을 사용하려면 <a href="https://console.anthropic.com/" target="_blank">Claude API 키</a>가 필요해요.<br>
+      없어도 음식명을 직접 입력해서 기록할 수 있어요!
+      <div id="api-key-row">
+        <input type="password" id="api-key-input" placeholder="sk-ant-..." />
+        <button id="save-api-key">저장</button>
+      </div>
+    </div>
+
+    <div class="section-title">📷 사진</div>
+    <div class="upload-area" id="upload-area">
+      <div class="upload-icon">📸</div>
+      <p>사진을 눌러 촬영하거나 선택하세요</p>
+      <small>jpg · png · heic 가능</small>
+      <input type="file" id="file-input" accept="image/*" capture="environment" style="display:none" />
+    </div>
+    <div id="preview-wrap">
+      <img id="preview-img" src="" alt="미리보기" />
+      <button id="remove-img">×</button>
+    </div>
+    <button class="btn btn-primary btn-full" id="analyze-btn" style="margin-top:12px;display:none">✨ AI로 음식 분석하기</button>
+
+    <div id="ai-loading"><div class="spinner"></div><br>AI가 음식을 분석 중이에요...</div>
+
+    <div id="ai-result-section">
+      <div class="section-title" style="margin-top:20px">🍽 인식된 음식</div>
+      <div class="food-tag-list" id="food-tag-list"></div>
+      <div class="add-food-row">
+        <input type="text" id="manual-food-input" placeholder="음식 직접 추가" />
+        <button class="btn btn-ghost" id="add-food-btn">추가</button>
+      </div>
+    </div>
+
+    <div id="manual-add-section">
+      <div class="section-title" style="margin-top:20px">🍽 음식 입력</div>
+      <div class="food-tag-list" id="food-tag-list-manual"></div>
+      <div class="add-food-row">
+        <input type="text" id="manual-food-input2" placeholder="음식명 직접 입력 (예: 비빔밥)" />
+        <button class="btn btn-ghost" id="add-food-btn2">추가</button>
+      </div>
+    </div>
+
+    <div class="section-title">🕐 식사 시간대</div>
+    <div class="meal-type-grid">
+      <button class="meal-type-btn selected" data-type="아침"><span class="meal-emoji">🌅</span>아침</button>
+      <button class="meal-type-btn" data-type="점심"><span class="meal-emoji">☀️</span>점심</button>
+      <button class="meal-type-btn" data-type="저녁"><span class="meal-emoji">🌙</span>저녁</button>
+      <button class="meal-type-btn" data-type="간식"><span class="meal-emoji">🍪</span>간식</button>
+    </div>
+
+    <div class="section-title">📝 메모 (선택)</div>
+    <textarea id="memo-input" rows="2" placeholder="오늘 식사 한줄 메모 (선택사항)"></textarea>
+
+    <button class="btn btn-primary btn-full" id="save-btn" style="margin-top:20px">저장하기</button>
+    <button class="btn btn-ghost btn-full" id="reset-btn" style="margin-top:8px">초기화</button>
+  </div>
+
+  <!-- ── 통계 ── -->
+  <div id="stats-page" class="page">
+    <div id="weekly-section">
+      <h3>📅 이번 주 칼로리</h3>
+      <canvas id="weekly-chart" height="160"></canvas>
+    </div>
+    <div id="weekly-section" style="margin-bottom:16px">
+      <h3 style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--text2)">🥗 오늘 영양소 비율</h3>
+      <canvas id="macro-chart" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- ── 설정 ── -->
+  <div id="settings-page" class="page">
+    <div class="setting-card">
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">닉네임</div>
+          <div class="setting-sub">홈 화면 인사말에 사용돼요</div>
+        </div>
+        <input type="text" id="nickname-input" placeholder="이름 입력" maxlength="10" />
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">하루 칼로리 목표</div>
+          <div class="setting-sub">기본값 2,000 kcal</div>
+        </div>
+        <input type="number" id="goal-input" placeholder="2000" min="500" max="5000" />
+      </div>
+    </div>
+    <button class="btn btn-primary btn-full" id="save-settings-btn">설정 저장</button>
+    <button class="btn btn-danger btn-full" id="clear-all-btn" style="margin-top:12px">전체 기록 초기화</button>
+  </div>
+
+</main>
+
+<button id="fab" title="기록하기">＋</button>
+<div id="toast"></div>
+
+<script>
+// ── 상수 ──
+const MEAL_TYPES = ['아침','점심','저녁','간식'];
+const MEAL_EMOJI = { 아침:'🌅', 점심:'☀️', 저녁:'🌙', 간식:'🍪' };
+const MEAL_CLASS = { 아침:'meal-morning', 점심:'meal-lunch', 저녁:'meal-dinner', 간식:'meal-snack' };
+
+// 간단한 칼로리 DB (공공데이터 대체 — MVP용)
+const FOOD_DB = {
+  '비빔밥':      { kcal:560, carb:85, prot:18, fat:12 },
+  '김치찌개':    { kcal:220, carb:12, prot:14, fat:11 },
+  '된장찌개':    { kcal:180, carb:14, prot:12, fat:6  },
+  '삼겹살':      { kcal:420, carb:0,  prot:22, fat:36 },
+  '치킨':        { kcal:380, carb:18, prot:28, fat:22 },
+  '피자':        { kcal:470, carb:52, prot:18, fat:20 },
+  '라면':        { kcal:500, carb:72, prot:10, fat:18 },
+  '햄버거':      { kcal:530, carb:42, prot:26, fat:28 },
+  '샐러드':      { kcal:120, carb:14, prot:4,  fat:6  },
+  '밥':          { kcal:300, carb:66, prot:5,  fat:1  },
+  '국밥':        { kcal:450, carb:55, prot:22, fat:14 },
+  '아메리카노':  { kcal:10,  carb:1,  prot:0,  fat:0  },
+  '라떼':        { kcal:120, carb:15, prot:4,  fat:4  },
+  '우유':        { kcal:130, carb:10, prot:7,  fat:7  },
+  '바나나':      { kcal:90,  carb:23, prot:1,  fat:0  },
+  '사과':        { kcal:80,  carb:21, prot:0,  fat:0  },
+  '계란':        { kcal:80,  carb:1,  prot:6,  fat:6  },
+  '계란후라이':  { kcal:110, carb:1,  prot:7,  fat:9  },
+  '토스트':      { kcal:280, carb:40, prot:8,  fat:9  },
+  '떡볶이':      { kcal:350, carb:62, prot:8,  fat:8  },
+  '순대':        { kcal:250, carb:20, prot:14, fat:12 },
+  '김밥':        { kcal:320, carb:52, prot:10, fat:8  },
+  '초밥':        { kcal:360, carb:56, prot:16, fat:8  },
+  '파스타':      { kcal:450, carb:60, prot:14, fat:16 },
+  '샌드위치':    { kcal:380, carb:44, prot:18, fat:14 },
+};
+
+function getFoodInfo(name) {
+  for (const key of Object.keys(FOOD_DB)) {
+    if (name.includes(key) || key.includes(name)) return { ...FOOD_DB[key], name };
+  }
+  return { name, kcal:200, carb:25, prot:8, fat:6 }; // 기본값
+}
+
+// ── 상태 ──
+let currentDate = new Date();
+currentDate.setHours(0,0,0,0);
+let selectedMealType = '아침';
+let currentFoods = [];
+let weeklyChart = null;
+let macroChart = null;
+
+// ── 스토리지 ──
+function getSettings() {
+  return JSON.parse(localStorage.getItem('foodiary_settings') || '{"nickname":"","goal":2000}');
+}
+function saveSettings(s) { localStorage.setItem('foodiary_settings', JSON.stringify(s)); }
+function getAllRecords() {
+  return JSON.parse(localStorage.getItem('foodiary_records') || '[]');
+}
+function saveAllRecords(r) { localStorage.setItem('foodiary_records', JSON.stringify(r)); }
+function getApiKey() { return localStorage.getItem('foodiary_apikey') || ''; }
+function saveApiKey(k) { localStorage.setItem('foodiary_apikey', k); }
+
+function dateKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function getRecordsForDate(d) {
+  return getAllRecords().filter(r => r.date === dateKey(d));
+}
+
+// ── 날짜 표시 ──
+function formatDateLabel(d) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const diff = Math.round((d - today) / 86400000);
+  const label = diff === 0 ? '오늘' : diff === -1 ? '어제' : diff === 1 ? '내일' : '';
+  const m = d.getMonth()+1, day = d.getDate();
+  const week = ['일','월','화','수','목','금','토'][d.getDay()];
+  return label ? `${m}월 ${day}일 (${week}) · ${label}` : `${m}월 ${day}일 (${week})`;
+}
+function updateDateLabel() {
+  document.getElementById('current-date-label').textContent = formatDateLabel(currentDate);
+}
+document.getElementById('prev-day').onclick = () => { currentDate.setDate(currentDate.getDate()-1); updateDateLabel(); renderHome(); };
+document.getElementById('next-day').onclick = () => { currentDate.setDate(currentDate.getDate()+1); updateDateLabel(); renderHome(); };
+
+// ── 탭 ──
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab + '-page').classList.add('active');
+    if (btn.dataset.tab === 'stats') renderStats();
+    if (btn.dataset.tab === 'settings') loadSettings();
+  };
+});
+document.getElementById('fab').onclick = () => {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelector('[data-tab=record]').classList.add('active');
+  document.getElementById('record-page').classList.add('active');
+};
+
+// ── 홈 렌더링 ──
+function renderHome() {
+  const records = getRecordsForDate(currentDate);
+  const settings = getSettings();
+
+  let totalKcal=0, totalCarb=0, totalProt=0, totalFat=0;
+  records.forEach(r => r.foods.forEach(f => {
+    totalKcal += f.kcal||0; totalCarb += f.carb||0; totalProt += f.prot||0; totalFat += f.fat||0;
+  }));
+
+  document.getElementById('total-kcal').textContent = Math.round(totalKcal);
+  document.getElementById('total-carb').textContent = Math.round(totalCarb)+'g';
+  document.getElementById('total-prot').textContent = Math.round(totalProt)+'g';
+  document.getElementById('total-fat').textContent  = Math.round(totalFat)+'g';
+
+  const goal = settings.goal || 2000;
+  const pct = Math.min((totalKcal/goal)*100, 100);
+  const bar = document.getElementById('kcal-bar');
+  bar.style.width = pct+'%';
+  bar.classList.toggle('over', totalKcal > goal);
+  const remain = goal - Math.round(totalKcal);
+  document.getElementById('remain-kcal').textContent = remain > 0 ? remain+'kcal' : '초과!';
+
+  const list = document.getElementById('meal-list');
+  list.innerHTML = '';
+  MEAL_TYPES.forEach(type => {
+    const recs = records.filter(r => r.mealType === type);
+    const typeKcal = recs.reduce((s,r) => s + r.foods.reduce((ss,f) => ss+(f.kcal||0),0), 0);
+    const section = document.createElement('div');
+    section.className = `meal-section meal-${type === '아침' ? 'morning' : type === '점심' ? 'lunch' : type === '저녁' ? 'dinner' : 'snack'}`;
+
+    const header = document.createElement('div');
+    header.className = 'meal-header';
+    header.innerHTML = `<span>${MEAL_EMOJI[type]} ${type}</span><span class="meal-kcal">${recs.length ? Math.round(typeKcal)+' kcal' : ''}</span>`;
+    section.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'meal-body';
+
+    if (!recs.length) {
+      body.innerHTML = `<div class="meal-empty">아직 기록이 없어요</div>`;
+    } else {
+      recs.forEach(rec => {
+        rec.foods.forEach(food => {
+          const item = document.createElement('div');
+          item.className = 'meal-item';
+          const thumb = rec.imageData
+            ? `<div class="meal-item-thumb"><img src="${rec.imageData}" /></div>`
+            : `<div class="meal-item-thumb">${MEAL_EMOJI[type]}</div>`;
+          item.innerHTML = `
+            ${thumb}
+            <div class="meal-item-info">
+              <div class="meal-item-name">${food.name}</div>
+              <div class="meal-item-kcal">${food.kcal} kcal · 탄${food.carb}g 단${food.prot}g 지${food.fat}g</div>
+            </div>
+            <button class="meal-item-del" data-id="${rec.id}" data-food="${food.name}">×</button>
+          `;
+          body.appendChild(item);
+        });
+        if (rec.memo) {
+          const memo = document.createElement('div');
+          memo.style.cssText = 'padding:8px 14px 12px;font-size:12px;color:var(--text3)';
+          memo.textContent = '📝 ' + rec.memo;
+          body.appendChild(memo);
+        }
+      });
+    }
+    section.appendChild(body);
+    list.appendChild(section);
+  });
+
+  // 삭제 버튼
+  list.querySelectorAll('.meal-item-del').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.id;
+      let all = getAllRecords();
+      const rec = all.find(r => r.id === id);
+      if (!rec) return;
+      rec.foods = rec.foods.filter(f => f.name !== btn.dataset.food);
+      if (!rec.foods.length) all = all.filter(r => r.id !== id);
+      saveAllRecords(all);
+      renderHome();
+      toast('삭제했어요');
+    };
+  });
+}
+
+// ── 기록 페이지 ──
+let previewDataUrl = null;
+
+// API 키 배너
+const apiKeyInput = document.getElementById('api-key-input');
+apiKeyInput.value = getApiKey();
+document.getElementById('save-api-key').onclick = () => {
+  saveApiKey(apiKeyInput.value.trim());
+  if (apiKeyInput.value.trim()) {
+    document.getElementById('api-banner').style.display = 'none';
+    toast('API 키 저장 완료!');
+  }
+};
+if (getApiKey()) document.getElementById('api-banner').style.display = 'none';
+
+// 업로드
+document.getElementById('upload-area').onclick = () => document.getElementById('file-input').click();
+document.getElementById('file-input').onchange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    previewDataUrl = ev.target.result;
+    document.getElementById('preview-img').src = previewDataUrl;
+    document.getElementById('preview-wrap').style.display = 'block';
+    document.getElementById('upload-area').style.display = 'none';
+    document.getElementById('analyze-btn').style.display = 'flex';
+    document.getElementById('manual-add-section').style.display = 'none';
+    document.getElementById('ai-result-section').style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+};
+document.getElementById('remove-img').onclick = () => {
+  previewDataUrl = null;
+  document.getElementById('preview-wrap').style.display = 'none';
+  document.getElementById('upload-area').style.display = 'block';
+  document.getElementById('analyze-btn').style.display = 'none';
+  document.getElementById('ai-result-section').style.display = 'none';
+  document.getElementById('manual-add-section').style.display = 'block';
+  document.getElementById('file-input').value = '';
+};
+
+// AI 분석
+document.getElementById('analyze-btn').onclick = async () => {
+  const apiKey = getApiKey();
+  if (!apiKey) { toast('API 키를 먼저 입력해 주세요!'); return; }
+  if (!previewDataUrl) { toast('사진을 먼저 선택해 주세요!'); return; }
+
+  document.getElementById('ai-loading').style.display = 'block';
+  document.getElementById('analyze-btn').style.display = 'none';
+  document.getElementById('ai-result-section').style.display = 'none';
+
+  try {
+    const base64 = previewDataUrl.split(',')[1];
+    const mediaType = previewDataUrl.split(';')[0].split(':')[1];
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-opus-4-5',
+        max_tokens: 300,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+            { type: 'text', text: '이 사진에 있는 음식 이름만 한국어로 쉼표로 구분해서 알려줘. 설명 없이 음식명만. 예: 비빔밥, 된장찌개, 밥' }
+          ]
+        }]
+      })
+    });
+    const data = await res.json();
+    const text = data.content?.[0]?.text || '';
+    const foods = text.split(/[,，、\n]/).map(s => s.trim()).filter(Boolean);
+    currentFoods = foods.map(getFoodInfo);
+    renderFoodTags();
+    document.getElementById('ai-result-section').style.display = 'block';
+  } catch(e) {
+    toast('AI 분석 실패 😢 직접 입력해 주세요');
+    document.getElementById('manual-add-section').style.display = 'block';
+  } finally {
+    document.getElementById('ai-loading').style.display = 'none';
+  }
+};
+
+function renderFoodTags() {
+  const list = document.getElementById('food-tag-list');
+  list.innerHTML = '';
+  currentFoods.forEach((f, i) => {
+    const tag = document.createElement('div');
+    tag.className = 'food-tag';
+    tag.innerHTML = `<span>${f.name} <small style="opacity:.7">${f.kcal}kcal</small></span><button data-i="${i}">×</button>`;
+    tag.querySelector('button').onclick = () => { currentFoods.splice(i, 1); renderFoodTags(); };
+    list.appendChild(tag);
+  });
+}
+
+// 직접 추가
+function setupManualAdd(inputId, btnId) {
+  document.getElementById(btnId).onclick = () => {
+    const val = document.getElementById(inputId).value.trim();
+    if (!val) return;
+    currentFoods.push(getFoodInfo(val));
+    renderFoodTags();
+    renderManualTags();
+    document.getElementById(inputId).value = '';
+  };
+  document.getElementById(inputId).onkeydown = e => { if (e.key === 'Enter') document.getElementById(btnId).click(); };
+}
+function renderManualTags() {
+  const list = document.getElementById('food-tag-list-manual');
+  list.innerHTML = '';
+  currentFoods.forEach((f, i) => {
+    const tag = document.createElement('div');
+    tag.className = 'food-tag';
+    tag.innerHTML = `<span>${f.name} <small style="opacity:.7">${f.kcal}kcal</small></span><button data-i="${i}">×</button>`;
+    tag.querySelector('button').onclick = () => { currentFoods.splice(i, 1); renderManualTags(); };
+    list.appendChild(tag);
+  });
+}
+setupManualAdd('manual-food-input', 'add-food-btn');
+setupManualAdd('manual-food-input2', 'add-food-btn2');
+
+// 식사 유형 선택
+document.querySelectorAll('.meal-type-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.meal-type-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    selectedMealType = btn.dataset.type;
+  };
+});
+
+// 저장
+document.getElementById('save-btn').onclick = () => {
+  if (!currentFoods.length) { toast('음식을 추가해 주세요!'); return; }
+  const record = {
+    id: Date.now().toString(),
+    date: dateKey(currentDate),
+    mealType: selectedMealType,
+    foods: currentFoods,
+    memo: document.getElementById('memo-input').value.trim(),
+    imageData: previewDataUrl,
+    timestamp: Date.now()
+  };
+  const all = getAllRecords();
+  all.push(record);
+  saveAllRecords(all);
+  toast('저장 완료! 🎉');
+  resetRecordForm();
+  // 홈으로 이동
+  setTimeout(() => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelector('[data-tab=home]').classList.add('active');
+    document.getElementById('home-page').classList.add('active');
+    renderHome();
+  }, 600);
+};
+
+// 초기화
+document.getElementById('reset-btn').onclick = resetRecordForm;
+function resetRecordForm() {
+  currentFoods = [];
+  previewDataUrl = null;
+  document.getElementById('file-input').value = '';
+  document.getElementById('preview-wrap').style.display = 'none';
+  document.getElementById('upload-area').style.display = 'block';
+  document.getElementById('analyze-btn').style.display = 'none';
+  document.getElementById('ai-result-section').style.display = 'none';
+  document.getElementById('ai-loading').style.display = 'none';
+  document.getElementById('manual-add-section').style.display = 'block';
+  document.getElementById('food-tag-list').innerHTML = '';
+  document.getElementById('food-tag-list-manual').innerHTML = '';
+  document.getElementById('memo-input').value = '';
+  document.querySelectorAll('.meal-type-btn').forEach(b => b.classList.remove('selected'));
+  document.querySelector('[data-type=아침]').classList.add('selected');
+  selectedMealType = '아침';
+}
+
+// ── 통계 ──
+function renderStats() {
+  const all = getAllRecords();
+  // 주간 데이터
+  const days = [];
+  for (let i=6; i>=0; i--) {
+    const d = new Date(currentDate);
+    d.setDate(d.getDate() - i);
+    const recs = all.filter(r => r.date === dateKey(d));
+    const kcal = recs.reduce((s,r) => s+r.foods.reduce((ss,f)=>ss+(f.kcal||0),0), 0);
+    days.push({ label: ['일','월','화','수','목','금','토'][d.getDay()], kcal: Math.round(kcal) });
+  }
+  const goal = getSettings().goal || 2000;
+  const ctx1 = document.getElementById('weekly-chart').getContext('2d');
+  if (weeklyChart) weeklyChart.destroy();
+  weeklyChart = new Chart(ctx1, {
+    type: 'bar',
+    data: {
+      labels: days.map(d=>d.label),
+      datasets: [{
+        data: days.map(d=>d.kcal),
+        backgroundColor: days.map(d => d.kcal > goal ? '#E05252' : '#3D7A5E'),
+        borderRadius: 6
+      }]
+    },
+    options: {
+      plugins: { legend: { display:false }, tooltip: { callbacks: { label: c => c.raw+' kcal' } } },
+      scales: {
+        y: { beginAtZero:true, grid:{ color:'#F0EEE9' }, ticks:{ font:{size:11} } },
+        x: { grid:{ display:false }, ticks:{ font:{size:12} } }
+      }
+    }
+  });
+
+  // 오늘 매크로
+  const todayRecs = all.filter(r => r.date === dateKey(currentDate));
+  let c=0,p=0,f=0;
+  todayRecs.forEach(r=>r.foods.forEach(food=>{c+=food.carb||0;p+=food.prot||0;f+=food.fat||0;}));
+  const ctx2 = document.getElementById('macro-chart').getContext('2d');
+  if (macroChart) macroChart.destroy();
+  macroChart = new Chart(ctx2, {
+    type: 'doughnut',
+    data: {
+      labels: ['탄수화물','단백질','지방'],
+      datasets: [{ data: [Math.round(c),Math.round(p),Math.round(f)], backgroundColor:['#5C6BC0','#3D7A5E','#F4A35A'], borderWidth:0, hoverOffset:6 }]
+    },
+    options: {
+      plugins: { legend: { position:'bottom', labels:{ font:{size:13}, padding:16 } },
+        tooltip: { callbacks: { label: c => `${c.label}: ${c.raw}g` } } }
+    }
+  });
+}
+
+// ── 설정 ──
+function loadSettings() {
+  const s = getSettings();
+  document.getElementById('nickname-input').value = s.nickname || '';
+  document.getElementById('goal-input').value = s.goal || 2000;
+}
+document.getElementById('save-settings-btn').onclick = () => {
+  saveSettings({ nickname: document.getElementById('nickname-input').value.trim(), goal: parseInt(document.getElementById('goal-input').value)||2000 });
+  toast('설정 저장 완료!');
+  renderHome();
+};
+document.getElementById('clear-all-btn').onclick = () => {
+  if (!confirm('전체 기록을 삭제할까요? 되돌릴 수 없어요.')) return;
+  saveAllRecords([]);
+  renderHome();
+  toast('전체 기록을 삭제했어요');
+};
+
+// ── 토스트 ──
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+// ── 초기 실행 ──
+updateDateLabel();
+renderHome();
+document.getElementById('manual-add-section').style.display = 'block';
+</script>
+</body>
+</html>
